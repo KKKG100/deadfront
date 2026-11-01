@@ -1,0 +1,114 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dead Front Admin</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0b0d0b;color:#cdd8c8;font:13px/1.35 system-ui,sans-serif;overflow:hidden}
+#login{position:fixed;inset:0;display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;background:#0b0d0b;z-index:9}
+input,select,button{background:#1a201a;color:#cdd8c8;border:1px solid #3a463a;border-radius:4px;padding:5px 8px;font:inherit}button{cursor:pointer}button:hover{background:#2a352a}button.on{background:#5a2a22;border-color:#c55}
+#app{display:none;height:100vh;grid-template-columns:1fr 330px}#cv{width:100%;height:100vh;display:block;cursor:crosshair}
+#side{overflow:auto;background:#121612;border-left:1px solid #2a352a;padding:8px;height:100vh}
+h3{margin:10px 0 4px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#8fa88a}
+.row{display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin:3px 0}.row input{width:70px}
+.pl{border:1px solid #2a352a;border-radius:4px;padding:5px;margin:4px 0}.pl b{cursor:pointer}.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px}
+#msg{position:fixed;left:10px;bottom:10px;background:#000c;padding:6px 10px;border-radius:4px;max-width:50vw}#top{position:fixed;left:10px;top:10px;background:#000b;padding:6px 10px;border-radius:4px;pointer-events:none}
+.s{color:#889}
+</style></head><body>
+<div id="login"><h2>DEAD FRONT · ADMIN</h2><input id="pin" type="password" placeholder="PIN" autofocus><button id="go">Enter</button><div id="lerr" class="s"></div></div>
+<div id="app"><canvas id="cv"></canvas><div id="side">
+<h3>Tool</h3><div class="row" id="tools"></div>
+<div class="row" id="topts"></div>
+<h3>Selected</h3><div id="sel" class="s">Click an entity (Select tool)</div>
+<h3>World</h3><div class="row"><select id="hour"></select><button id="sethr">Set hour</button></div>
+<div class="row"><input id="day" placeholder="day"><button id="setday">Set day</button><button id="clearz">Clear all zombies</button></div>
+<div class="row"><input id="say" style="width:200px" placeholder="Broadcast message"><button id="saybtn">Send</button></div>
+<div class="row"><select id="evs"><option value="bloodmoon">Blood Moon</option><option value="drop">Supply Drop</option><option value="horde">Horde Migration</option><option value="refugees">Refugees</option><option value="meteor">Meteor Impact</option></select><button id="evb">Trigger event</button></div>
+<div class="row" id="muts"></div>
+<h3>Players</h3><div id="pls"></div></div></div>
+<div id="top"></div><div id="msg" style="display:none"></div>
+<script>
+const $=id=>document.getElementById(id);let ws,MW=560,MH=400,TILE=32,ZK=[],UK=[],BK=[],MUT=[],ready=0;
+let S={players:[],nests:[],muts:[]},Z=[],U=[],B=[],DEP=new Map(),tool='select',sel=null,selInfo=null,cam={x:0,y:0,z:.06},terr=null,pcol={};
+const cv=$('cv'),cx=cv.getContext('2d');
+function rs(){cv.width=cv.clientWidth;cv.height=cv.clientHeight}addEventListener('resize',rs);
+function msg(t){const m=$('msg');m.textContent=t;m.style.display='block';clearTimeout(msg.t);msg.t=setTimeout(()=>m.style.display='none',3500)}
+function send(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o))}
+function connect(){ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/adminws');ws.binaryType='arraybuffer';
+ ws.onopen=()=>send({t:'auth',pin:$('pin').value});
+ ws.onclose=()=>{if(ready){msg('Disconnected. Reconnecting…');ready=0;setTimeout(connect,2000)}};
+ ws.onmessage=e=>{if(typeof e.data!=='string')return bin(e.data);const m=JSON.parse(e.data);
+  if(m.t==='denied'){$('lerr').textContent=m.m}
+  else if(m.t==='ok'){MW=m.MW;MH=m.MH;ZK=m.zk;UK=m.uk;BK=m.bk;MUT=m.mut;DEP.clear();m.dep.forEach(d=>DEP.set(d[0],d));$('login').style.display='none';$('app').style.display='grid';rs();if(!ready){ready=1;init();loadTerr()}}
+  else if(m.t==='s'){S=m;S.players.forEach(p=>pcol[p.id]=p.c);rosterUI();$('top').textContent=`Day ${m.day} · t=${m.gt}s · ${m.zc} zombies · ${m.players.filter(p=>p.a).length} alive · ${m.players.filter(p=>p.o).length} online`;mutsUI()}
+  else if(m.t==='msg')msg(m.m);
+  else if(m.t==='info'){selInfo=m;selUI()}
+  else if(m.t==='dep')DEP.set(m.d[0],m.d);else if(m.t==='depx')DEP.delete(m.id)}}
+$('go').onclick=connect;$('pin').onkeydown=e=>{if(e.key==='Enter')connect()};
+function bin(ab){const dv=new DataView(ab);if(dv.getUint8(0)!==2)return;const nz=dv.getUint16(1,true),nu=dv.getUint16(3,true),nb=dv.getUint16(5,true);let o=7;
+ const rd=n=>{const a=[];for(let i=0;i<n;i++,o+=10)a.push({id:dv.getUint32(o,true),t:dv.getUint8(o+4),f:dv.getUint8(o+5),x:dv.getUint16(o+6,true),y:dv.getUint16(o+8,true)});return a};Z=rd(nz);U=rd(nu);B=rd(nb)}
+async function loadTerr(){let buf;try{const r=await fetch('/world.gz?s='+Date.now());const ds=r.body.pipeThrough(new DecompressionStream('gzip'));buf=await new Response(ds).arrayBuffer();if(buf.byteLength!==4*MW*MH)throw 0}catch(e){buf=await (await fetch('/world.raw?s='+Date.now())).arrayBuffer()}
+ const N=MW*MH,T=new Uint8Array(buf,0,N),E=new Uint16Array(buf.slice(N,3*N)),F=new Uint8Array(buf,3*N,N);
+ const c=document.createElement('canvas');c.width=MW;c.height=MH;const x=c.getContext('2d'),im=x.createImageData(MW,MH);
+ for(let i=0;i<N;i++){const t=T[i],e=E[i]/30000,o=i*4;let r,g,b;
+  if(t===0){const d=Math.max(0,Math.min(1,(e-.1)/.35));r=20+d*10;g=50+d*40;b=90+d*50}else if(t===2){r=g=b=110+(e-.8)*200}else if(t===3){r=30;g=80;b=40}else{r=70+e*40;g=110+e*30;b=55}
+  im.data[o]=r;im.data[o+1]=g;im.data[o+2]=b;im.data[o+3]=255}
+ x.putImageData(im,0,0);terr=c;cam.z=Math.min(cv.width/(MW*TILE),cv.height/(MH*TILE));cam.x=MW*TILE/2;cam.y=MH*TILE/2}
+const TOOLS=[['select','Select'],['spawnz','Spawn zombie'],['ore','Spawn ore'],['oil','Spawn oil'],['move','Move selected'],['kill','Kill radius']];
+function init(){$('tools').innerHTML=TOOLS.map(t=>`<button data-t="${t[0]}">${t[1]}</button>`).join('');
+ $('tools').onclick=e=>{if(e.target.dataset.t)setTool(e.target.dataset.t)};
+ $('hour').innerHTML=[...Array(24).keys()].map(h=>`<option value="${h}">${String(h).padStart(2,'0')}:00</option>`).join('');
+ $('sethr').onclick=()=>send({t:'time',hour:+$('hour').value});$('setday').onclick=()=>send({t:'day',day:+$('day').value});$('clearz').onclick=()=>confirm('Remove ALL zombies?')&&send({t:'clearz'});
+ $('evb').onclick=()=>send({t:'event',id:$('evs').value});$('saybtn').onclick=()=>{send({t:'say',text:$('say').value});$('say').value=''};setTool('select');requestAnimationFrame(draw)}
+function setTool(t){tool=t;[...$('tools').children].forEach(b=>b.classList.toggle('on',b.dataset.t===t));
+ const o=$('topts');if(t==='spawnz')o.innerHTML=`<select id="zt">${ZK.map(k=>`<option>${k}</option>`).join('')}</select><input id="zn" value="5" title="count"><input id="zl" value="1" title="level / difficulty"><label><input type="checkbox" id="ze" style="width:auto"> elite</label><label><input type="checkbox" id="zi" style="width:auto"> idle</label>`;
+ else if(t==='kill')o.innerHTML=`<input id="kr" value="400"> radius (px)`;else o.innerHTML=t==='move'?'<span class="s">Select something, then click the destination</span>':'';}
+function rosterUI(){const el=$('pls');if(el.contains(document.activeElement)&&document.activeElement.tagName==='INPUT')return;
+ el.innerHTML=S.players.map(p=>`<div class="pl" data-p="${p.id}"><span class="dot" style="background:${p.c}"></span><b data-a="goto">${p.n}</b> <span class="s">${p.a?'alive':'dead'} ${p.o?'· online':'· offline'} · age ${p.age}</span><br><span class="s">$${p.res[0]} ▣${p.res[1]} ⛽${p.res[2]} · pop ${p.pop}/${p.cap} · ${p.u}u ${p.b}b · ${p.k}k</span>
+ <div class="row"><input data-r="c" placeholder="$" value="${p.res[0]}"><input data-r="m" placeholder="▣" value="${p.res[1]}"><input data-r="f" placeholder="⛽" value="${p.res[2]}"><button data-a="res">Set</button></div>
+ <div class="row"><button data-a="name">Rename</button><button data-a="tech">Tech</button><button data-a="heal">Heal</button><button data-a="give">+5 units</button><button data-a="tp">Teleport units→</button><button data-a="base">Move base→</button><button data-a="resp">Random spot</button><button data-a="elim">Eliminate</button><button data-a="kick">Kick</button></div></div>`).join('')}
+$('pls').onclick=e=>{const a=e.target.dataset.a;if(!a)return;const box=e.target.closest('.pl'),pid=+box.dataset.p,p=S.players.find(q=>q.id===pid);
+ if(a==='goto'&&p.hq){cam.x=p.hq[0];cam.y=p.hq[1];cam.z=.4}
+ else if(a==='res'){const r={t:'pres',pid};box.querySelectorAll('[data-r]').forEach(i=>r[i.dataset.r]=i.value);send(r)}
+ else if(a==='name'){const n=prompt('New name',p.n);if(n)send({t:'pname',pid,name:n})}
+ else if(a==='tech')send({t:'ptech',pid});else if(a==='heal')send({t:'pheal',pid});
+ else if(a==='give'){const t=prompt('Unit type',UK.includes('rifleman')?'rifleman':UK[0]);if(t)send({t:'pgive',pid,type:t,n:5})}
+ else if(a==='tp'){tpPid=pid;msg('Click the map to teleport all of '+p.n+"'s units there");setTool('tp')}
+ else if(a==='resp'){if(confirm('Relocate '+p.n+' to a RANDOM new spot?'))send({t:'prespawn',pid})}
+ else if(a==='base'){tpPid=pid;msg('Click the map where '+p.n+"'s new base should go");setTool('base')}
+ else if(a==='elim'){if(confirm('Eliminate '+p.n+'?'))send({t:'pelim',pid})}else if(a==='kick')send({t:'pkick',pid})};
+let tpPid=0;
+function mutsUI(){const el=$('muts');const h=MUT.map(m=>`<button data-m="${m[0]}" class="${S.muts.includes(m[0])?'on':''}" title="toggle mutation">${m[1]}</button>`).join('');if(el.dataset.h!==h){el.dataset.h=h;el.innerHTML=h}}
+$('muts').onclick=e=>{if(e.target.dataset.m)send({t:'mut',id:e.target.dataset.m})};
+function selUI(){const el=$('sel'),i=selInfo;if(!sel||!i||i.gone){el.innerHTML='<span class="s">Nothing selected</span>';return}
+ if(i.k==='d'){el.innerHTML=`<b>${i.type} deposit</b> <span class="s">#${i.dep}</span><div class="row"><button id="sdd">Delete deposit</button></div>`;$('sdd').onclick=()=>{send({t:'rmd',id:i.dep});sel=null;selInfo=null;selUI()};return}
+ let h=`<b>${i.type}</b> <span class="s">#${i.id} ${i.k==='z'?'zombie':i.k==='u'?'unit':i.k==='b'?'building':'nest'}${i.o!=null&&i.k!=='z'?' · owner '+i.o:''}${i.ld?' · lvl '+i.ld:''}</span><br>HP <input id="shp" value="${i.hp}"> / ${i.maxhp} <button id="shpb">Set</button><div class="row">`;
+ if(i.k!=='b'||i.type!=='hq')h+=`<button id="sdel">Delete</button>`;if(i.k==='z'||i.k==='u')h+=`<button id="smv">Move…</button>`;if(i.k==='n')h+=`<input id="snl" value="${i.lvl}"><button id="snb">Set nest level</button>`;
+ el.innerHTML=h+'</div>';
+ const g=id=>$(id);if(g('shpb'))g('shpb').onclick=()=>send({t:'hp',id:i.id,hp:+g('shp').value});if(g('sdel'))g('sdel').onclick=()=>{send({t:i.k==='z'?'killz':'killu',id:i.id});sel=null;selUI()};
+ if(g('smv'))g('smv').onclick=()=>setTool('move');if(g('snb'))g('snb').onclick=()=>send({t:'nestlvl',id:i.id,lvl:+g('snl').value})}
+setInterval(()=>{if(sel&&typeof sel==='number'&&tool!=='spawnz'&&!document.activeElement.id.startsWith('s'))send({t:'inspect',id:sel})},700);
+const w2s=(x,y)=>[(x-cam.x)*cam.z+cv.width/2,(y-cam.y)*cam.z+cv.height/2],s2w=(x,y)=>[(x-cv.width/2)/cam.z+cam.x,(y-cv.height/2)/cam.z+cam.y];
+let drag=null;cv.onmousedown=e=>{drag={x:e.clientX,y:e.clientY,cx:cam.x,cy:cam.y,m:0}};
+addEventListener('mousemove',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(Math.abs(dx)+Math.abs(dy)>4)drag.m=1;if(drag.m){cam.x=drag.cx-dx/cam.z;cam.y=drag.cy-dy/cam.z}});
+addEventListener('mouseup',e=>{if(!drag)return;const d=drag;drag=null;if(d.m||e.target!==cv)return;const r=cv.getBoundingClientRect(),[wx,wy]=s2w(e.clientX-r.left,e.clientY-r.top);click(wx,wy)});
+cv.oncontextmenu=e=>{e.preventDefault();setTool('select')};
+cv.onwheel=e=>{e.preventDefault();const r=cv.getBoundingClientRect(),[bx,by]=s2w(e.clientX-r.left,e.clientY-r.top);cam.z=Math.max(.02,Math.min(2,cam.z*(e.deltaY<0?1.2:1/1.2)));const[ax,ay]=s2w(e.clientX-r.left,e.clientY-r.top);cam.x+=bx-ax;cam.y+=by-ay};
+function pick(wx,wy){const R=Math.max(14,10/cam.z);let best=null,bd=R*R;
+ const test=(a,k,off)=>{for(const e of a){const ex=k==='b'?(e.x+1)*TILE:e.x,ey=k==='b'?(e.y+1)*TILE:e.y;const d=(ex-wx)**2+(ey-wy)**2;if(d<bd){bd=d;best=e.id}}};
+ test(U);test(Z);test(B,'b');for(const d of DEP.values()){if(d[2]<0)continue;const dd=((d[2]+1)*TILE-wx)**2+((d[3]+1)*TILE-wy)**2;if(dd<bd){bd=dd;best='d'+d[0]}}for(const n of S.nests){const d=(n[1]-wx)**2+(n[2]-wy)**2;if(d<bd*2){bd=d;best=n[0]}}return best}
+function click(wx,wy){
+ if(tool==='select'){sel=pick(wx,wy);selInfo=null;if(typeof sel==='string'){const d=DEP.get(+sel.slice(1));selInfo={k:'d',id:sel,type:d[1]?'oil':'ore',dep:+sel.slice(1),hp:0,maxhp:0};selUI();return}selUI();if(sel)send({t:'inspect',id:sel})}
+ else if(tool==='spawnz')send({t:'spawnz',type:$('zt').value,n:+$('zn').value,ld:+$('zl').value,x:wx,y:wy,elite:$('ze').checked,mode:$('zi').checked?'idle':'assault'});
+ else if(tool==='ore'||tool==='oil')send({t:'spawnd',type:tool,x:wx,y:wy});
+ else if(tool==='move'){if(sel)send({t:'move',id:sel,x:wx,y:wy});else msg('Select something first')}
+ else if(tool==='kill')send({t:'killz',x:wx,y:wy,r:+$('kr').value});
+ else if(tool==='base'){send({t:'pbase',pid:tpPid,x:wx,y:wy});setTool('select')}
+ else if(tool==='tp'){send({t:'ptp',pid:tpPid,x:wx,y:wy});setTool('select')}}
+function draw(){requestAnimationFrame(draw);if(!ready)return;cx.fillStyle='#07090c';cx.fillRect(0,0,cv.width,cv.height);
+ if(terr){cx.imageSmoothingEnabled=false;const[x0,y0]=w2s(0,0);cx.drawImage(terr,x0,y0,MW*TILE*cam.z,MH*TILE*cam.z)}
+ const z=cam.z,vw=cv.width,vh=cv.height;
+ for(const d of DEP.values()){if(d[1]===undefined||d[2]<0)continue;const[x,y]=w2s((d[2]+1)*TILE,(d[3]+1)*TILE);if(x<-20||y<-20||x>vw+20||y>vh+20)continue;cx.fillStyle=d[1]===0?'#d9a441':'#222';cx.strokeStyle=d[1]===0?'#fff8':'#8cf';const s=Math.max(3,TILE*z*1.6);cx.fillRect(x-s/2,y-s/2,s,s);cx.strokeRect(x-s/2,y-s/2,s,s)}
+ for(const n of S.nests){const[x,y]=w2s(n[1],n[2]);cx.fillStyle=n[4]?'#c0392b':'#7a3b3b';cx.beginPath();cx.arc(x,y,Math.max(4,18*z*2),0,7);cx.fill();cx.fillStyle='#fff';cx.font='10px sans-serif';if(z>.1)cx.fillText('L'+n[3],x-6,y+3)}
+ for(const b of B){const[x,y]=w2s(b.x*TILE,b.y*TILE);if(x<-60||y<-60||x>vw+60||y>vh+60)continue;const s=Math.max(3,TILE*2*z);cx.fillStyle=pcol[b.f]||'#fff';cx.globalAlpha=.85;cx.fillRect(x,y,s,s);cx.globalAlpha=1;if(BK[b.t]==='hq'){cx.strokeStyle='#fff';cx.lineWidth=2;cx.strokeRect(x-2,y-2,s+4,s+4);cx.lineWidth=1}if(b.id===sel){cx.strokeStyle='#ff0';cx.strokeRect(x-3,y-3,s+6,s+6)}}
+ for(const u of U){const[x,y]=w2s(u.x,u.y);if(x<-9||y<-9||x>vw+9||y>vh+9)continue;cx.fillStyle=pcol[u.f]||'#fff';const s=Math.max(2.5,6*Math.sqrt(z*8));cx.fillRect(x-s/2,y-s/2,s,s);if(u.id===sel){cx.strokeStyle='#ff0';cx.strokeRect(x-s,y-s,s*2,s*2)}}
+ for(const q of Z){const[x,y]=w2s(q.x,q.y);if(x<-9||y<-9||x>vw+9||y>vh+9)continue;cx.fillStyle=(q.f&2)?'#ff3df0':(q.f&1)?'#e33':'#8a8';const s=Math.max(2,4.5*Math.sqrt(z*8));cx.beginPath();cx.arc(x,y,s,0,7);cx.fill();if(q.id===sel){cx.strokeStyle='#ff0';cx.beginPath();cx.arc(x,y,s+4,0,7);cx.stroke()}}
+ for(const p of S.players)if(p.hq&&z>.03){const[x,y]=w2s(p.hq[0],p.hq[1]);cx.fillStyle='#fff';cx.font='bold 12px sans-serif';cx.fillText(p.n,x-20,y-22)}
+ if(sel&&selInfo&&selInfo.k==='n'){}}
+</script></body></html>

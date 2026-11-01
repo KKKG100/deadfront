@@ -1,0 +1,12 @@
+{
+  "name": "dead-front-multiplayer",
+  "version": "1.0.0",
+  "description": "DEAD FRONT — a massively multiplayer zombie-defense RTS. Authoritative Node server + browser client.",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "build": "bash build.sh"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": { "ws": "^8.18.0" }
+}

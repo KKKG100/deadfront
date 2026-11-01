@@ -1,0 +1,4 @@
+module.exports={EVENTS,WMODS,choosePerk,missionProg,strengthDay,get depGrid(){return depGrid},get occ(){return occ},killZombie,removeBuilding,ev,nearestPass,passL,passW,passA,inMap,mkFor,pick,mutPool,triggerMutation,recomputeMods,SHash,CFG,get G(){return G},get WORLD(){return WORLD},get T(){return T},get E(){return E},get F(){return F},get MW(){return MW},get MH(){return MH},get hZ(){return hZ},get hP(){return hP},
+ TILE,DAY_LEN,Z,U,B,ZK,UK,BK,ZI,UI_,BI,TECHS,TECH_BY,MUTS,RES,PCOLORS,
+ newWorld,newPlayer,spawnPlayer,respawn,eliminate,stepSim,placeBuilding,sellBuilding,enqueue,dequeue,orderMove,orderAttack,orderStop,startResearch,cancelResearch,
+ reqAlly,acceptAlly,declineAlly,breakAlly,sendAid,sysChat,toP,toAll,notifyP,recalcEcon,canPlaceP,gameHour,nightAmt,isFriend,addUnit,addBuilding,spawnZombie,PL,clamp};
