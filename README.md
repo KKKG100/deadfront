@@ -43,3 +43,6 @@ npm start         # http://localhost:3000
 
 ## Admin console
 Open `/adminconsole`, PIN `1100` (override with env `ADMIN_PIN`). Live map, spawn zombies/ore/oil, move/edit units, zombies and players.
+
+## Servers
+The process hosts several independent worlds. A new one is created automatically when every server is full (`MAX_SERVERS`, default 6; `MAX_PLAYERS` per server, default 24). Empty extra servers close after 15 minutes. Players pick a server on the title screen; `/api/servers` lists them. The admin console has a server switcher.
